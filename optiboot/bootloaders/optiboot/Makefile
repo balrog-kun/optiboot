@@ -146,10 +146,18 @@ COMMON_OPTIONS += -DRADIO_UART=1
 BIGBOOT=1
 endif
 
+# Flash sizes are multiples of 0x1000 so our text sections start at addresses
+# ending in e00 or c00 at the end of RAM -- depending on whether we're
+# builting the 512 or 1024-byte version (0x200 or 0x400)
+# Note that on some targets this has no effect since they're always 1024B-long.
+# TODO: we should actuall just use avr-size and select an address automatically.
+TEXT_START = e00
+
 # BIG_BOOT: Include extra features, up to 1K.
 ifdef BIGBOOT
 BIGBOOT_CMD = -DBIGBOOT=1
 dummy = FORCE
+TEXT_START = a00
 endif
 
 ifdef SOFT_UART
@@ -219,7 +227,7 @@ virboot328: TARGET = atmega328
 virboot328: MCU_TARGET = atmega328p
 virboot328: CFLAGS += $(COMMON_OPTIONS) '-DVIRTUAL_BOOT'
 virboot328: AVR_FREQ ?= 16000000L
-virboot328: LDSECTIONS  = -Wl,--section-start=.text=0x7e00 -Wl,--section-start=.version=0x7ffe
+virboot328: LDSECTIONS  = -Wl,--section-start=.text=0x7$(TEXT_START) -Wl,--section-start=.version=0x7ffe
 virboot328: $(PROGRAM)_atmega328.hex
 virboot328: $(PROGRAM)_atmega328.lst
 
@@ -248,7 +256,7 @@ atmega328: TARGET = atmega328
 atmega328: MCU_TARGET = atmega328p
 atmega328: CFLAGS += $(COMMON_OPTIONS)
 atmega328: AVR_FREQ ?= 16000000L
-atmega328: LDSECTIONS  = -Wl,--section-start=.text=0x7e00 -Wl,--section-start=.version=0x7ffe
+atmega328: LDSECTIONS  = -Wl,--section-start=.text=0x7$(TEXT_START) -Wl,--section-start=.version=0x7ffe
 atmega328: $(PROGRAM)_atmega328.hex
 atmega328: $(PROGRAM)_atmega328.lst
 
@@ -309,7 +317,7 @@ atmega8: TARGET = atmega8
 atmega8: MCU_TARGET = atmega8
 atmega8: CFLAGS += $(COMMON_OPTIONS)
 atmega8: AVR_FREQ ?= 16000000L 
-atmega8: LDSECTIONS  = -Wl,--section-start=.text=0x1e00 -Wl,--section-start=.version=0x1ffe
+atmega8: LDSECTIONS  = -Wl,--section-start=.text=0x1$(TEXT_START) -Wl,--section-start=.version=0x1ffe
 atmega8: $(PROGRAM)_atmega8.hex
 atmega8: $(PROGRAM)_atmega8.lst
 
@@ -328,7 +336,7 @@ atmega88: TARGET = atmega88
 atmega88: MCU_TARGET = atmega88
 atmega88: CFLAGS += $(COMMON_OPTIONS)
 atmega88: AVR_FREQ ?= 16000000L 
-atmega88: LDSECTIONS  = -Wl,--section-start=.text=0x1e00 -Wl,--section-start=.version=0x1ffe
+atmega88: LDSECTIONS  = -Wl,--section-start=.text=0x1$(TEXT_START) -Wl,--section-start=.version=0x1ffe
 atmega88: $(PROGRAM)_atmega88.hex
 atmega88: $(PROGRAM)_atmega88.lst
 
@@ -347,7 +355,7 @@ atmega32: TARGET = atmega32
 atmega32: MCU_TARGET = atmega32
 atmega32: CFLAGS += $(COMMON_OPTIONS)
 atmega32: AVR_FREQ ?= 11059200L
-atmega32: LDSECTIONS  = -Wl,--section-start=.text=0x7e00 -Wl,--section-start=.version=0x7ffe
+atmega32: LDSECTIONS  = -Wl,--section-start=.text=0x7$(TEXT_START) -Wl,--section-start=.version=0x7ffe
 atmega32: $(PROGRAM)_atmega32.hex
 atmega32: $(PROGRAM)_atmega32.lst
 
