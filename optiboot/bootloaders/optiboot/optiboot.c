@@ -126,6 +126,13 @@
 /* UART number (0..n) for devices with more than          */
 /* one hardware uart (644P, 1284P, etc)                   */
 /*                                                        */
+/* RADIO_UART:                                            */
+/* Try to initialise an NRF24L01 chip if one is connected */
+/* to the SPI pins and treat received bytes like those    */
+/* received over UART.  This uses the 1M, ShockBurst(tm)  */
+/* mode for simplicity. Slave address will be read from   */
+/* the EEPROM, needs to be set up first.                  */
+/*                                                        */
 /**********************************************************/
 
 /**********************************************************/
@@ -310,6 +317,7 @@ void watchdogConfig(uint8_t x);
 void uartDelay() __attribute__ ((naked));
 #endif
 void appStart(uint8_t rstFlags) __attribute__ ((naked));
+static void radio_init(void);
 
 /*
  * NRWW memory
@@ -449,6 +457,9 @@ int main(void) {
   UART_SRC = _BV(UCSZ00) | _BV(UCSZ01);
   UART_SRL = (uint8_t)( (F_CPU + BAUD_RATE * 4L) / (BAUD_RATE * 8L) - 1 );
 #endif
+#endif
+#ifdef RADIO_UART
+  radio_init();
 #endif
 
   // Set up watchdog to trigger after 500ms
@@ -643,7 +654,72 @@ int main(void) {
   }
 }
 
+#ifdef RADIO_UART
+/*
+ * Radio mode gets set the moment we receive any command over the radio chip.
+ * From that point our responses will also be sent through the radio instead
+ * of through the UART.  Otherwise all communication goes through the UART
+ * as normal.
+ *
+ * TODO: require a challenge-response negotiation at least to start the
+ * radio mode, for security -- the keys need to be stored in EEPROM.  Ideally
+ * we'd encrypt all communication but that would be an overkill for the
+ * bootloader.
+ */
+static uint8_t radio_mode = 0;
+static uint8_t radio_present = 0;
+
+#define CE_DDR		DDRC
+#define CE_PORT		PORTC
+#define CSN_DDR		DDRC
+#define CSN_PORT	PORTC
+#define CE_PIN		(1 << 1)
+#define CSN_PIN		(1 << 0)
+
+#include "spi.h"
+#include "nrf24.h"
+
+static uint8_t eeprom_read(uint16_t addr) {
+	while (EECR & (1 << EEPE));
+
+	EEAR = addr;
+	EECR |= 1 << EERE;	/* Start eeprom read by writing EERE */
+
+	return EEDR;
+}
+
+static void radio_init(void) {
+  uint8_t addr[3];
+
+  spi_init();
+
+  if (nrf24_init())
+    return;
+
+  radio_present = 1;
+  /*
+   * Set our own address.
+   *
+   * The remote end's address will be set according to the contents
+   * of the first packet we receive from the master.
+   */
+  addr[0] = eeprom_read(0);
+  addr[1] = eeprom_read(1);
+  addr[2] = eeprom_read(2);
+  nrf24_set_rx_addr(addr);
+
+  nrf24_rx_mode();
+}
+#endif
+
 void putch(char ch) {
+#ifdef RADIO_UART
+  if (radio_mode) {
+    nrf24_tx((uint8_t *) &ch, 1);
+    nrf24_tx_result_wait();
+    return;
+  }
+#endif
 #ifndef SOFT_UART
   while (!(UART_SRA & _BV(UDRE0)));
   UART_UDR = ch;
@@ -675,6 +751,10 @@ void putch(char ch) {
 
 uint8_t getch(void) {
   uint8_t ch;
+#if RADIO_UART
+  static uint8_t pkt_len = 0, pkt_start = 0;
+  static uint8_t pkt_buf[32];
+#endif
 
 #ifdef LED_DATA_FLASH
 #if defined(__AVR_ATmega8__) || defined (__AVR_ATmega32__)
@@ -709,21 +789,53 @@ uint8_t getch(void) {
       "r25"
 );
 #else
-  while(!(UART_SRA & _BV(RXC0)))
-    ;
-  if (!(UART_SRA & _BV(FE0))) {
-      /*
-       * A Framing Error indicates (probably) that something is talking
-       * to us at the wrong bit rate.  Assume that this is because it
-       * expects to be talking to the application, and DON'T reset the
-       * watchdog.  This should cause the bootloader to abort and run
-       * the application "soon", if it keeps happening.  (Note that we
-       * don't care that an invalid char is returned...)
-       */
-    watchdogReset();
+  while(1) {
+    if (UART_SRA & _BV(RXC0)) {
+      if (!(UART_SRA & _BV(FE0))) {
+        /*
+         * A Framing Error indicates (probably) that something is talking
+         * to us at the wrong bit rate.  Assume that this is because it
+         * expects to be talking to the application, and DON'T reset the
+         * watchdog.  This should cause the bootloader to abort and run
+         * the application "soon", if it keeps happening.  (Note that we
+         * don't care that an invalid char is returned...)
+         */
+        watchdogReset();
+      }
+
+      ch = UART_UDR;
+      break;
+    }
+
+#if RADIO_UART
+    if (radio_present && (pkt_len || nrf24_rx_fifo_data())) {
+      if (!pkt_len) {
+        nrf24_rx_read(pkt_buf, &pkt_len);
+        pkt_start = 0;
+
+        if (!radio_mode && pkt_len >= 3) {
+          /*
+           * If this is the first packet we receive, the first three bytes
+           * should contain the sender's address.
+           */
+          nrf24_set_tx_addr(pkt_buf + pkt_start);
+          pkt_len -= 3;
+          pkt_start += 3;
+
+          radio_mode = 1;
+        } else if (!radio_mode)
+          pkt_len = 0;
+
+        if (!pkt_len)
+          continue;
+      }
+
+      ch = pkt_buf[pkt_start ++];
+      pkt_len --;
+      break;
+    }
+#endif
   }
-  
-  ch = UART_UDR;
 #endif
 
 #ifdef LED_DATA_FLASH
@@ -763,6 +875,9 @@ void getNch(uint8_t count) {
 
 void verifySpace() {
   if (getch() != CRC_EOP) {
+#ifdef RADIO_UART
+    nrf24_idle_mode(0);		      // power the radio off
+#endif
     watchdogConfig(WATCHDOG_16MS);    // shorten WD timeout
     while (1)			      // and busy-loop so that WD causes
       ;				      //  a reset and app start.
