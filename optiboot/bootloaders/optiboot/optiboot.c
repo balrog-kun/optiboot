@@ -360,13 +360,20 @@ static void radio_init(void);
 #define NRWWSTART (0x1800)
 #endif
 
+// TODO: get actual .bss size from GCC
+#ifdef RADIO_UART
+#define BSS_SIZE	0x80
+#else
+#define BSS_SIZE	0
+#endif
+
 /* C zero initialises all global variables. However, that requires */
 /* These definitions are NOT zero initialised, but that doesn't matter */
 /* This allows us to drop the zero init code, saving us memory */
-#define buff    ((uint8_t*)(RAMSTART))
+#define buff    ((uint8_t*)(RAMSTART+BSS_SIZE))
 #ifdef VIRTUAL_BOOT_PARTITION
-#define rstVect (*(uint16_t*)(RAMSTART+SPM_PAGESIZE*2+4))
-#define wdtVect (*(uint16_t*)(RAMSTART+SPM_PAGESIZE*2+6))
+#define rstVect (*(uint16_t*)(RAMSTART+BSS_SIZE+SPM_PAGESIZE*2+4))
+#define wdtVect (*(uint16_t*)(RAMSTART+BSS_SIZE+SPM_PAGESIZE*2+6))
 #endif
 
 /*
