@@ -438,9 +438,15 @@ int main(void) {
   //
   // If not, uncomment the following instructions:
   // cli();
+  asm volatile ("cli");
   asm volatile ("clr __zero_reg__");
 #if defined(__AVR_ATmega8__) || defined (__AVR_ATmega32__)
   SP=RAMEND;  // This is done by hardware reset
+#endif
+#if BSS_SIZE > 0
+  // Clear .bss
+  for (length = 0; length < BSS_SIZE; length ++)
+    ((uint8_t *) RAMSTART)[length] = 0;
 #endif
 
   // Adaboot no-wait mod
