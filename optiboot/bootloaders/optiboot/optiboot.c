@@ -213,6 +213,7 @@ asm("  .section .version\n"
 #include <inttypes.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
+#include <avr/eeprom.h>
 
 // <avr/boot.h> uses sts instructions, but this version uses out instructions
 // This saves cycles and program memory.
@@ -416,6 +417,24 @@ static void radio_init(void);
 # define UART_UDR UDR3
 #endif
 
+static void eeprom_write(uint16_t addr, uint8_t val) {
+	while (!eeprom_is_ready());
+
+	EEAR = addr;
+	EEDR = val;
+	EECR |= 1 << EEMPE;	/* Write logical one to EEMPE */
+	EECR |= 1 << EEPE;	/* Start eeprom write by setting EEPE */
+}
+
+static uint8_t eeprom_read(uint16_t addr) {
+	while (!eeprom_is_ready());
+
+	EEAR = addr;
+	EECR |= 1 << EERE;	/* Start eeprom read by writing EERE */
+
+	return EEDR;
+}
+
 /* main program starts here */
 int main(void) {
   uint8_t ch;
@@ -528,12 +547,12 @@ int main(void) {
       // LOAD ADDRESS
       uint16_t newAddress;
       newAddress = getch();
-      newAddress = (newAddress & 0xff) | (getch() << 8);
+      newAddress |= getch() << 8;
 #ifdef RAMPZ
       // Transfer top bit to RAMPZ
       RAMPZ = (newAddress & 0x8000) ? 1 : 0;
 #endif
-      newAddress += newAddress; // Convert from word address to byte address
+      newAddress <<= 1; // Convert from word address to byte address
       address = newAddress;
       verifySpace();
     }
@@ -544,106 +563,137 @@ int main(void) {
     }
     /* Write memory, length is big endian and is in bytes */
     else if(ch == STK_PROG_PAGE) {
-      // PROGRAM PAGE - we support flash programming only, not EEPROM
+      // PROGRAM PAGE - we support flash and EEPROM programming
       uint8_t *bufPtr;
       uint16_t addrPtr;
+      uint8_t type;
 
       getch();			/* getlen() */
       length = getch();
-      getch();
+      type = getch();
 
-      // If we are in RWW section, immediately start page erase
-      if (address < NRWWSTART) __boot_page_erase_short((uint16_t)(void*)address);
+#ifdef SUPPORT_EEPROM
+      if (type == 'F')		/* Flash */
+#endif
+        // If we are in RWW section, immediately start page erase
+        if (address < NRWWSTART) __boot_page_erase_short((uint16_t)(void*)address);
 
       // While that is going on, read in page contents
       bufPtr = buff;
       do *bufPtr++ = getch();
       while (--length);
 
-      // If we are in NRWW section, page erase has to be delayed until now.
-      // Todo: Take RAMPZ into account (not doing so just means that we will
-      //  treat the top of both "pages" of flash as NRWW, for a slight speed
-      //  decrease, so fixing this is not urgent.)
-      if (address >= NRWWSTART) __boot_page_erase_short((uint16_t)(void*)address);
+#ifdef SUPPORT_EEPROM
+      if (type == 'F') {	/* Flash */
+#endif
+        // If we are in NRWW section, page erase has to be delayed until now.
+        // Todo: Take RAMPZ into account (not doing so just means that we will
+        //  treat the top of both "pages" of flash as NRWW, for a slight speed
+        //  decrease, so fixing this is not urgent.)
+        if (address >= NRWWSTART) __boot_page_erase_short((uint16_t)(void*)address);
 
-      // Read command terminator, start reply
-      verifySpace();
+        // Read command terminator, start reply
+        verifySpace();
 
-      // If only a partial page is to be programmed, the erase might not be complete.
-      // So check that here
-      boot_spm_busy_wait();
+        // If only a partial page is to be programmed, the erase might not be complete.
+        // So check that here
+        boot_spm_busy_wait();
 
 #ifdef VIRTUAL_BOOT_PARTITION
-      if ((uint16_t)(void*)address == 0) {
-        // This is the reset vector page. We need to live-patch the code so the
-        // bootloader runs.
-        //
-        // Move RESET vector to WDT vector
-        uint16_t vect = buff[0] | (buff[1]<<8);
-        rstVect = vect;
-        wdtVect = buff[8] | (buff[9]<<8);
-        vect -= 4; // Instruction is a relative jump (rjmp), so recalculate.
-        buff[8] = vect & 0xff;
-        buff[9] = vect >> 8;
+        if ((uint16_t)(void*)address == 0) {
+          // This is the reset vector page. We need to live-patch the code so the
+          // bootloader runs.
+          //
+          // Move RESET vector to WDT vector
+          uint16_t vect = buff[0] | (buff[1]<<8);
+          rstVect = vect;
+          wdtVect = buff[8] | (buff[9]<<8);
+          vect -= 4; // Instruction is a relative jump (rjmp), so recalculate.
+          buff[8] = vect & 0xff;
+          buff[9] = vect >> 8;
 
-        // Add jump to bootloader at RESET vector
-        buff[0] = 0x7f;
-        buff[1] = 0xce; // rjmp 0x1d00 instruction
-      }
+          // Add jump to bootloader at RESET vector
+          buff[0] = 0x7f;
+          buff[1] = 0xce; // rjmp 0x1d00 instruction
+        }
 #endif
 
-      // Copy buffer into programming buffer
-      bufPtr = buff;
-      addrPtr = (uint16_t)(void*)address;
-      ch = SPM_PAGESIZE / 2;
-      do {
-        uint16_t a;
-        a = *bufPtr++;
-        a |= (*bufPtr++) << 8;
-        __boot_page_fill_short((uint16_t)(void*)addrPtr,a);
-        addrPtr += 2;
-      } while (--ch);
+        // Copy buffer into programming buffer
+        bufPtr = buff;
+        addrPtr = (uint16_t)(void*)address;
+        ch = SPM_PAGESIZE / 2;
+        do {
+          uint16_t a;
+          a = *bufPtr++;
+          a |= (*bufPtr++) << 8;
+          __boot_page_fill_short((uint16_t)(void*)addrPtr,a);
+          addrPtr += 2;
+        } while (--ch);
 
-      // Write from programming buffer
-      __boot_page_write_short((uint16_t)(void*)address);
-      boot_spm_busy_wait();
+        // Write from programming buffer
+        __boot_page_write_short((uint16_t)(void*)address);
+        boot_spm_busy_wait();
 
 #if defined(RWWSRE)
-      // Reenable read access to flash
-      boot_rww_enable();
+        // Reenable read access to flash
+        boot_rww_enable();
 #endif
+#ifdef SUPPORT_EEPROM
+      } else if (type == 'E') {	/* EEPROM */
+        // Read command terminator, start reply
+        verifySpace();
 
+        length = bufPtr - buff;
+        addrPtr = address;
+        bufPtr = buff;
+        while (length--) {
+          watchdogReset();
+          eeprom_write(addrPtr++, *bufPtr++);
+        }
+      }
+#endif
     }
     /* Read memory block mode, length is big endian.  */
     else if(ch == STK_READ_PAGE) {
-      // READ PAGE - we only read flash
+      // READ PAGE - we only read flash and EEPROM
+      uint8_t type;
+
       getch();			/* getlen() */
       length = getch();
-      getch();
+      type = getch();
 
       verifySpace();
-      do {
-#ifdef VIRTUAL_BOOT_PARTITION
-        // Undo vector patch in bottom page so verify passes
-        if (address == 0)       ch=rstVect & 0xff;
-        else if (address == 1)  ch=rstVect >> 8;
-        else if (address == 8)  ch=wdtVect & 0xff;
-        else if (address == 9) ch=wdtVect >> 8;
-        else ch = pgm_read_byte_near(address);
-        address++;
-#elif defined(RAMPZ)
-        // Since RAMPZ should already be set, we need to use EPLM directly.
-        // Also, we can use the autoincrement version of lpm to update "address"
-        //      do putch(pgm_read_byte_near(address++));
-        //      while (--length);
-        // read a Flash and increment the address (may increment RAMPZ)
-        __asm__ ("elpm %0,Z+\n" : "=r" (ch), "=z" (address): "1" (address));
-#else
-        // read a Flash byte and increment the address
-        __asm__ ("lpm %0,Z+\n" : "=r" (ch), "=z" (address): "1" (address));
+      /* TODO: putNch */
+#ifdef SUPPORT_EEPROM
+      if (type == 'F')
 #endif
-        putch(ch);
-      } while (--length);
+        do {
+#ifdef VIRTUAL_BOOT_PARTITION
+          // Undo vector patch in bottom page so verify passes
+          if (address == 0)       ch=rstVect & 0xff;
+          else if (address == 1)  ch=rstVect >> 8;
+          else if (address == 8)  ch=wdtVect & 0xff;
+          else if (address == 9) ch=wdtVect >> 8;
+          else ch = pgm_read_byte_near(address);
+          address++;
+#elif defined(RAMPZ)
+          // Since RAMPZ should already be set, we need to use EPLM directly.
+          // Also, we can use the autoincrement version of lpm to update "address"
+          //      do putch(pgm_read_byte_near(address++));
+          //      while (--length);
+          // read a Flash and increment the address (may increment RAMPZ)
+          __asm__ ("elpm %0,Z+\n" : "=r" (ch), "=z" (address): "1" (address));
+#else
+          // read a Flash byte and increment the address
+          __asm__ ("lpm %0,Z+\n" : "=r" (ch), "=z" (address): "1" (address));
+#endif
+          putch(ch);
+        } while (--length);
+#ifdef SUPPORT_EEPROM
+      else if (type == 'E')
+        while (length--)
+          putch(eeprom_read(address++));
+#endif
     }
 
     /* Get device signature bytes  */
@@ -691,15 +741,6 @@ static uint8_t radio_present = 0;
 
 #include "spi.h"
 #include "nrf24.h"
-
-static uint8_t eeprom_read(uint16_t addr) {
-	while (EECR & (1 << EEPE));
-
-	EEAR = addr;
-	EECR |= 1 << EERE;	/* Start eeprom read by writing EERE */
-
-	return EEDR;
-}
 
 static void radio_init(void) {
   uint8_t addr[3];

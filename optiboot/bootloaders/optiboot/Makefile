@@ -187,11 +187,10 @@ ifdef UART
 UARTCMD = -DUART=$(UART)
 endif
 
-# Not supported yet
-# ifdef SUPPORT_EEPROM
-# SUPPORT_EEPROM_CMD = -DSUPPORT_EEPROM
-# dummy = FORCE
-# endif
+ifdef SUPPORT_EEPROM
+COMMON_OPTIONS += -DSUPPORT_EEPROM
+dummy = FORCE
+endif
 
 # Not supported yet
 # ifdef TIMEOUT_MS
