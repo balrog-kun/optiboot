@@ -796,6 +796,20 @@ static void radio_init(void) {
 void putch(char ch) {
 #ifdef RADIO_UART
   if (radio_mode) {
+    /* Wait 1ms to allow the remote end to switch to Rx mode */
+    uint16_t cnt = F_CPU / 1000L / 8;
+
+    while (cnt --)
+      __asm__ __volatile__ (
+        "\tnop\n"
+        "\tnop\n"
+        "\tnop\n"
+        "\tnop\n"
+        "\tnop\n"
+        "\tnop\n"
+        "\tnop\n"
+        "\twdr\n");
+
     nrf24_tx((uint8_t *) &ch, 1);
     nrf24_tx_result_wait();
     return;
