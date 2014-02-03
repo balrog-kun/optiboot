@@ -37,7 +37,7 @@ static inline void nrf24_ce(uint8_t level) {
 		while (timer_read() - prev_ce_edge <= F_CPU / 5000);
 #else
 	/* This should take at least 10us (rising) or 200us (falling) */
-	uint16_t cnt = F_CPU / (level ? 100000 : 5000) / 8;
+	uint16_t cnt = level ? F_CPU / 100000L / 8 : F_CPU / 5000L / 8;
 
 	while (cnt --)
 		__asm__ __volatile__ (
