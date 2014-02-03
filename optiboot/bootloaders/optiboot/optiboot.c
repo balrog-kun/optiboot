@@ -318,7 +318,9 @@ void watchdogConfig(uint8_t x);
 void uartDelay() __attribute__ ((naked));
 #endif
 void appStart(uint8_t rstFlags) __attribute__ ((naked));
+#ifdef RADIO_UART
 static void radio_init(void);
+#endif
 
 /*
  * NRWW memory
@@ -825,7 +827,7 @@ void putch(char ch) {
 
 uint8_t getch(void) {
   uint8_t ch;
-#if RADIO_UART
+#ifdef RADIO_UART
   static uint8_t pkt_len = 0, pkt_start = 0;
   static uint8_t pkt_buf[32];
 #endif
@@ -881,7 +883,7 @@ uint8_t getch(void) {
       break;
     }
 
-#if RADIO_UART
+#ifdef RADIO_UART
     if (radio_present && (pkt_len || nrf24_rx_fifo_data())) {
       if (!pkt_len) {
         nrf24_rx_read(pkt_buf, &pkt_len);
