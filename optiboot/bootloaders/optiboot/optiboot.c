@@ -361,7 +361,7 @@ static void radio_init(void);
 #define NRWWSTART (0x1800)
 #endif
 
-// TODO: get actual .bss size from GCC
+// TODO: get actual .bss+.data size from GCC
 #ifdef RADIO_UART
 #define BSS_SIZE	0x80
 #else
@@ -463,9 +463,29 @@ int main(void) {
   SP=RAMEND;  // This is done by hardware reset
 #endif
 #if BSS_SIZE > 0
-  // Clear .bss
-  for (length = 0; length < BSS_SIZE; length ++)
-    ((uint8_t *) RAMSTART)[length] = 0;
+  // Prepare .data
+  asm volatile (
+	"	ldi	r17, hi8(__data_end)\n"
+	"	ldi	r26, lo8(__data_start)\n"
+	"	ldi	r27, hi8(__data_start)\n"
+	"	ldi	r30, lo8(__data_load_start)\n"
+	"	ldi	r31, hi8(__data_load_start)\n"
+	"	rjmp	cpchk\n"
+	"copy:	lpm	__tmp_reg__, Z+\n"
+	"	st	X+, __tmp_reg__\n"
+	"cpchk:	cpi	r26, lo8(__data_end)\n"
+	"	cpc	r27, r17\n"
+	"	brne	copy\n");
+  // Prepare .bss
+  asm volatile (
+	"	ldi	r17, hi8(__bss_end)\n"
+	"	ldi	r26, lo8(__bss_start)\n"
+	"	ldi	r27, hi8(__bss_start)\n"
+	"	rjmp	clchk\n"
+	"clear:	st	X+, __zero_reg__\n"
+	"clchk:	cpi	r26, lo8(__bss_end)\n"
+	"	cpc	r27, r17\n"
+	"	brne	clear\n");
 #endif
 
   // Adaboot no-wait mod
