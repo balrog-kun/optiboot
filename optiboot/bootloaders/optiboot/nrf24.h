@@ -313,7 +313,8 @@ static int nrf24_tx_result_wait(void) {
 	/* Reset CE early so that a new Tx or Rx op can start sooner. */
 	nrf24_ce(0);
 
-	while ((status & (1 << TX_FULL)) && !(status & (1 << MAX_RT)))
+	while ((!(status & (1 << TX_DS)) || (status & (1 << TX_FULL))) &&
+			!(status & (1 << MAX_RT)))
 		status = nrf24_read_status();
 
 	/* Reset status bits */
@@ -325,5 +326,5 @@ static int nrf24_tx_result_wait(void) {
 		nrf24_rx_mode();
 	}
 
-	return (status & (1 << TX_FULL)) ? -1 : 0;
+	return (status & (1 << MAX_RT)) ? -1 : 0;
 }
