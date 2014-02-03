@@ -37,7 +37,7 @@ static inline void nrf24_ce(uint8_t level) {
 		while (timer_read() - prev_ce_edge <= F_CPU / 5000);
 #else
 	/* This should take at least 10us (rising) or 200us (falling) */
-	uint16_t cnt = level ? F_CPU / 100000L / 8 : F_CPU / 5000L / 8;
+	uint16_t cnt = F_CPU / (level ? 100000 : 5000) / 8;
 
 	while (cnt --)
 		__asm__ __volatile__ (
@@ -169,8 +169,6 @@ static int nrf24_init(void) {
 	nrf24_write_reg(RF_CH, 42);
 	/* 3-byte addresses */
 	nrf24_write_reg(SETUP_AW, 0x01);
-	/* Only use data pipe 1 for receiving, pipe 0 is free for TX ACKs */
-	nrf24_write_reg(EN_RXADDR, 0x02);
 	/* Enable ACKing on both pipe 0 & 1 for TX & RX ACK support */
 	nrf24_write_reg(EN_AA, 0x03);
 
@@ -195,6 +193,9 @@ static void nrf24_rx_mode(void) {
 
 	/* Rx mode */
 	nrf24_write_reg(CONFIG, CONFIG_VAL | (1 << PWR_UP) | (1 << PRIM_RX));
+	/* Only use data pipe 1 for receiving, pipe 0 is for TX ACKs */
+	nrf24_write_reg(EN_RXADDR, 0x02);
+
 	nrf24_ce(1);
 
 	nrf24_in_rx = 1;
@@ -272,6 +273,8 @@ static void nrf24_tx(uint8_t *buf, uint8_t len) {
 
 	/* Tx mode */
 	nrf24_write_reg(CONFIG, CONFIG_VAL | (1 << PWR_UP));
+	/* Use pipe 0 for receiving ACK packets */
+	nrf24_write_reg(EN_RXADDR, 0x01);
 
 	/*
 	 * The TX_FULL bit is automatically reset on a successful Tx, but
