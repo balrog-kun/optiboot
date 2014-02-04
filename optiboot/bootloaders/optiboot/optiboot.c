@@ -796,22 +796,32 @@ static void radio_init(void) {
 void putch(char ch) {
 #ifdef RADIO_UART
   if (radio_mode) {
-    /* Wait 1ms to allow the remote end to switch to Rx mode */
-    uint16_t cnt = F_CPU / 1000L / 8;
+    static uint8_t pkt_len = 0;
+    static uint8_t pkt_buf[32];
 
-    while (cnt --)
-      __asm__ __volatile__ (
-        "\tnop\n"
-        "\tnop\n"
-        "\tnop\n"
-        "\tnop\n"
-        "\tnop\n"
-        "\tnop\n"
-        "\tnop\n"
-        "\twdr\n");
+    pkt_buf[pkt_len++] = ch;
 
-    nrf24_tx((uint8_t *) &ch, 1);
-    nrf24_tx_result_wait();
+    if (ch == STK_OK || pkt_len == 32) {
+      /* Wait 1ms to allow the remote end to switch to Rx mode */
+      uint16_t cnt = F_CPU / 1000L / 8;
+
+      while (cnt --)
+        __asm__ __volatile__ (
+          "\tnop\n"
+          "\tnop\n"
+          "\tnop\n"
+          "\tnop\n"
+          "\tnop\n"
+          "\tnop\n"
+          "\tnop\n"
+          "\twdr\n");
+
+      nrf24_tx(pkt_buf, pkt_len);
+      nrf24_tx_result_wait();
+
+      pkt_len = 0;
+    }
+
     return;
   }
 #endif
@@ -904,6 +914,8 @@ uint8_t getch(void) {
 
 #ifdef RADIO_UART
     if (radio_present && (pkt_len || nrf24_rx_fifo_data())) {
+      watchdogReset();
+
       if (!pkt_len) {
         nrf24_rx_read(pkt_buf, &pkt_len);
         pkt_start = 0;
