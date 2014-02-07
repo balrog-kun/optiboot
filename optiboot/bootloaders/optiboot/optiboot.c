@@ -784,11 +784,6 @@ static void radio_init(void) {
   addr[1] = eeprom_read(1);
   addr[2] = eeprom_read(2);
   nrf24_set_rx_addr(addr);
-  /* TODO: use no-ack */
-  addr[0] = eeprom_read(3);
-  addr[1] = eeprom_read(4);
-  addr[2] = eeprom_read(5);
-  nrf24_set_tx_addr(addr);
 
   nrf24_rx_mode();
 }
