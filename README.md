@@ -20,7 +20,7 @@ Optiboot
 ========
 
 Optiboot is a minimal Arduino bootloader that takes only around 500 bytes of your Flash memory
-instead of the 2 kB the default bootloader needs.  I believe it is shipped with the Arduino IDE
+instead of the 2 kB the default bootloader needs.  I believe it ships with the Arduino IDE
 in more recent versions so you can replace the default bootloader on your Arduino board with
 it if you want.  See optiboot/bootloaders/optiboot/README.TXT for more information.
 
@@ -31,12 +31,15 @@ Building
 ========
 
 To build a normal optiboot for an atmega328 just run:
+
     $ make atmega328
 
 To include EEPROM writing support add "SUPPORT_EEPROM=1"
+
     $ make atmega328 SUPPORT_EEPROM=1
 
 To also add nRF24L01+ support you need to use "LED_START_FLASHES=0 RADIO_UART=1"
+
     $ make atmega328 LED_START_FLASHES=0 RADIO_UART=1 SUPPORT_EEPROM=1
 
 Your bootloader is ready to burn onto an atmega chip at optiboot_atmega328.hex.  To burn it
