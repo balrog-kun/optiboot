@@ -420,21 +420,21 @@ static void radio_init(void);
 #endif
 
 static void eeprom_write(uint16_t addr, uint8_t val) {
-	while (!eeprom_is_ready());
+  while (!eeprom_is_ready());
 
-	EEAR = addr;
-	EEDR = val;
-	EECR |= 1 << EEMPE;	/* Write logical one to EEMPE */
-	EECR |= 1 << EEPE;	/* Start eeprom write by setting EEPE */
+  EEAR = addr;
+  EEDR = val;
+  EECR |= 1 << EEMPE;	/* Write logical one to EEMPE */
+  EECR |= 1 << EEPE;	/* Start eeprom write by setting EEPE */
 }
 
 static uint8_t eeprom_read(uint16_t addr) {
-	while (!eeprom_is_ready());
+  while (!eeprom_is_ready());
 
-	EEAR = addr;
-	EECR |= 1 << EERE;	/* Start eeprom read by writing EERE */
+  EEAR = addr;
+  EECR |= 1 << EERE;	/* Start eeprom read by writing EERE */
 
-	return EEDR;
+  return EEDR;
 }
 
 /* main program starts here */
