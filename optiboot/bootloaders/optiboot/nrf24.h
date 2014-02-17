@@ -12,6 +12,23 @@ static inline void nrf24_csn(uint8_t level) {
 		CSN_PORT &= ~CSN_PIN;
 }
 
+static void delay8(uint16_t count) {
+	while (count --)
+		__asm__ __volatile__ (
+			"\tnop\n"
+			"\tnop\n"
+			"\tnop\n"
+			"\tnop\n"
+			"\tnop\n"
+			"\tnop\n"
+			"\tnop\n"
+			"\twdr\n"
+		);
+}
+#ifndef TIMER
+#define my_delay(msec) delay8((int) (F_CPU / 8000L * (msec)))
+#endif
+
 static inline void nrf24_ce(uint8_t level) {
 	/*
 	 * Make sure the minimum time period has passed since the previous
@@ -37,19 +54,10 @@ static inline void nrf24_ce(uint8_t level) {
 		while (timer_read() - prev_ce_edge <= F_CPU / 5000);
 #else
 	/* This should take at least 10us (rising) or 200us (falling) */
-	uint16_t cnt = F_CPU / (level ? 100000 : 5000) / 8;
-
-	while (cnt --)
-		__asm__ __volatile__ (
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\twdr\n"
-		);
+	if (level)
+		my_delay(0.01);
+	else
+		my_delay(0.2);
 #endif
 
 	if (level)
@@ -120,24 +128,7 @@ static uint8_t nrf24_tx_flush(void) {
 }
 
 static void nrf24_delay(void) {
-#ifdef TIMER
 	my_delay(5);
-#else
-	/* This should take at least 4ms */
-	uint16_t cnt = F_CPU / 250 / 8;
-
-	while (cnt --)
-		__asm__ __volatile__ (
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\tnop\n"
-			"\twdr\n"
-		);
-#endif
 }
 
 /* Enable 16-bit CRC */
