@@ -754,6 +754,7 @@ int main(void) {
  */
 static uint8_t radio_mode = 0;
 static uint8_t radio_present = 0;
+static uint8_t pkt_max_len = 32;
 
 #define CE_DDR		DDRC
 #define CE_PORT		PORTC
@@ -764,6 +765,8 @@ static uint8_t radio_present = 0;
 
 #include "spi.h"
 #include "nrf24.h"
+
+#define SEQN
 
 static void radio_init(void) {
   uint8_t addr[3];
@@ -797,25 +800,30 @@ void putch(char ch) {
 
     pkt_buf[pkt_len++] = ch;
 
-    if (ch == STK_OK || pkt_len == 32) {
-      /* Wait 1ms to allow the remote end to switch to Rx mode */
-      uint16_t cnt = F_CPU / 1000L / 8;
+    if (ch == STK_OK || pkt_len == pkt_max_len) {
+#ifdef SEQN
+      uint8_t cnt = 128;
 
-      while (cnt --)
-        __asm__ __volatile__ (
-          "\tnop\n"
-          "\tnop\n"
-          "\tnop\n"
-          "\tnop\n"
-          "\tnop\n"
-          "\tnop\n"
-          "\tnop\n"
-          "\twdr\n");
+      while (--cnt) {
+        /* Wait 4ms to allow the remote end to switch to Rx mode */
+        my_delay(4);
+
+        nrf24_tx(pkt_buf, pkt_len);
+        if (!nrf24_tx_result_wait())
+          break;
+      }
+
+      pkt_len = 1;
+      pkt_buf[0] ++;
+#else
+      /* Wait 4ms to allow the remote end to switch to Rx mode */
+      my_delay(4);
 
       nrf24_tx(pkt_buf, pkt_len);
       nrf24_tx_result_wait();
 
       pkt_len = 0;
+#endif
     }
 
     return;
@@ -913,17 +921,24 @@ uint8_t getch(void) {
       watchdogReset();
 
       if (!pkt_len) {
+#ifdef SEQN
+        static uint8_t seqn = 0xff;
+#define START 1
+#else
+#define START 0
+#endif
         nrf24_rx_read(pkt_buf, &pkt_len);
-        pkt_start = 0;
+        pkt_start = START;
 
-        if (!radio_mode && pkt_len >= 3) {
+        if (!radio_mode && pkt_len >= 4) {
           /*
            * If this is the first packet we receive, the first three bytes
            * should contain the sender's address.
            */
-          nrf24_set_tx_addr(pkt_buf + pkt_start);
-          pkt_len -= 3;
-          pkt_start += 3;
+          nrf24_set_tx_addr(pkt_buf);
+          pkt_max_len = pkt_buf[3];
+          pkt_len -= 4;
+          pkt_start += 4;
 
           radio_mode = 1;
         } else if (!radio_mode)
@@ -931,6 +946,16 @@ uint8_t getch(void) {
 
         if (!pkt_len)
           continue;
+
+#ifdef SEQN
+        if (pkt_buf[0] == seqn) {
+          pkt_len = 0;
+          continue;
+        }
+
+        seqn = pkt_buf[0];
+        pkt_len--;
+#endif
       }
 
       ch = pkt_buf[pkt_start ++];
