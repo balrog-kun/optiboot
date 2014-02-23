@@ -465,6 +465,40 @@ int main(void) {
 #if defined(__AVR_ATmega8__) || defined (__AVR_ATmega32__)
   SP=RAMEND;  // This is done by hardware reset
 #endif
+
+  /*
+   * With wireless flashing it's possible that this is a remote
+   * board that's hard to reset manually.  In this case optiboot can
+   * force the watchdog to run before jumping to userspace, so that if
+   * a buggy program is uploaded, the board resets automatically.  We
+   * still use the watchdog to reset the bootloader too.
+   */
+#ifdef FORCE_WATCHDOG
+  SP = RAMEND - 32;
+#define reset_cause (*(uint8_t *) (RAMEND - 16 - 4))
+#define marker (*(uint32_t *) (RAMEND - 16 - 3))
+
+  /* GCC does loads Y with SP at the beginning, repeat it with the new SP */
+  asm volatile ("in r28, 0x3d");
+  asm volatile ("in r29, 0x3e");
+
+  ch = MCUSR;
+  MCUSR = 0;
+  if ((ch & _BV(WDRF)) && marker == 0xdeadbeef) {
+    marker = 0;
+    appStart(reset_cause);
+  }
+  /* Save the original reset reason to pass on to the applicatoin */
+  reset_cause = ch;
+  marker = 0xdeadbeef;
+#else
+  // Adaboot no-wait mod
+  ch = MCUSR;
+  MCUSR = 0;
+  if (ch & (_BV(WDRF) | _BV(PORF) | _BV(BORF)))
+    appStart(ch);
+#endif
+
 #if BSS_SIZE > 0
   // Prepare .data
   asm volatile (
@@ -490,12 +524,6 @@ int main(void) {
 	"	cpc	r27, r17\n"
 	"	brne	clear\n");
 #endif
-
-  // Adaboot no-wait mod
-  ch = MCUSR;
-  MCUSR = 0;
-  if (ch & (_BV(WDRF) || _BV(PORF)))
-    appStart(ch);
 
 #if LED_START_FLASHES > 0
   // Set up Timer 1 for timeout counter
@@ -1055,12 +1083,17 @@ void watchdogConfig(uint8_t x) {
 }
 
 void appStart(uint8_t rstFlags) {
+#ifdef FORCE_WATCHDOG
+  watchdogConfig(WATCHDOG_4S);
+#else
+  watchdogConfig(WATCHDOG_OFF);
+#endif
+
   // save the reset flags in the designated register
   //  This can be saved in a main program by putting code in .init0 (which
   //  executes before normal c init code) to save R2 to a global variable.
   __asm__ __volatile__ ("mov r2, %0\n" :: "r" (rstFlags));
 
-  watchdogConfig(WATCHDOG_OFF);
   __asm__ __volatile__ (
 #ifdef VIRTUAL_BOOT_PARTITION
     // Jump to WDT vector
