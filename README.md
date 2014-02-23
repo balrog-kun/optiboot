@@ -38,9 +38,9 @@ To include EEPROM writing support add "SUPPORT_EEPROM=1"
 
     $ make atmega328 SUPPORT_EEPROM=1
 
-To also add nRF24L01+ support you need to use "LED_START_FLASHES=0 RADIO_UART=1"
+To also add nRF24L01+ support you need to use "LED_START_FLASHES=0 RADIO_UART=1 FORCE_WATCHDOG=1"
 
-    $ make atmega328 LED_START_FLASHES=0 RADIO_UART=1 SUPPORT_EEPROM=1
+    $ make atmega328 LED_START_FLASHES=0 RADIO_UART=1 FORCE_WATCHDOG=1 SUPPORT_EEPROM=1
 
 Your bootloader is ready to burn onto an atmega chip at optiboot_atmega328.hex.  To burn it
 you can use another Arduino as described in README.TXT.  LED_START_FLASHES=0 is needed because
@@ -51,6 +51,11 @@ The nRF chip is expected to be connected to the arduino using the 3 standard SPI
 MISO, SCK) plus the CE and CSN pins of the nRF chip.  By default optiboot assumes CE is
 wired to Analog Pin 1 (PC1) and CSN to Analog Pin 0 (PC0) because they're next to the SPI pins
 on some Arduinos.  You can change that mapping in optiboot.c.
+
+FORCE_WATCHDOG=1 enables the watchdog when starting the user application -- it will reset your programs after
+4s and force jumping back to bootloader for 1s, unless the program calls watchdog reset ("wdt")
+every now and then, or reconfigures the watchdog timer.  This is optional but recommended if you can't reset
+a remote/embedded board manually by pressing the reset button to protect against "bricking" the board.
 
 Configuring wireless
 ====================
