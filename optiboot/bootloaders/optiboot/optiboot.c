@@ -305,7 +305,7 @@ asm("  .section .version\n"
 /* The main function is in init9, which removes the interrupt vector table */
 /* we don't need. It is also 'naked', which means the compiler does not    */
 /* generate any entry or exit code itself. */
-int main(void) __attribute__ ((OS_main)) __attribute__ ((section (".init9")));
+int main(void) __attribute__ ((OS_main)) __attribute__ ((section (".init9"))) __attribute__ ((__noreturn__));
 void putch(char);
 uint8_t getch(void);
 static inline void getNch(uint8_t); /* "static inline" is a compiler hint to reduce code size */
@@ -317,7 +317,8 @@ void watchdogConfig(uint8_t x);
 #ifdef SOFT_UART
 void uartDelay() __attribute__ ((naked));
 #endif
-void appStart(uint8_t rstFlags) __attribute__ ((naked));
+void wait_timeout(void) __attribute__ ((__noreturn__));
+void appStart(uint8_t rstFlags) __attribute__ ((naked))  __attribute__ ((__noreturn__));
 #ifdef RADIO_UART
 static void radio_init(void);
 #endif
@@ -811,6 +812,15 @@ void putch(char ch) {
         nrf24_tx(pkt_buf, pkt_len);
         if (!nrf24_tx_result_wait())
           break;
+
+        /*
+	 * TODO: also check if there's anything in the Rx FIFO - that
+	 * would indicate that the other side has actually received our
+	 * packet but the ACK may have been lost instead.  In any case
+	 * the other side is not listening for what we're re-sending,
+	 * maybe has given up and is resending the full command which
+	 * is ok.
+	 */
       }
 
       pkt_len = 1;
@@ -1001,15 +1011,18 @@ void getNch(uint8_t count) {
   verifySpace();
 }
 
-void verifySpace() {
-  if (getch() != CRC_EOP) {
+void wait_timeout(void) {
 #ifdef RADIO_UART
-    nrf24_idle_mode(0);		      // power the radio off
+  nrf24_idle_mode(0);		      // power the radio off
 #endif
-    watchdogConfig(WATCHDOG_16MS);    // shorten WD timeout
-    while (1)			      // and busy-loop so that WD causes
-      ;				      //  a reset and app start.
-  }
+  watchdogConfig(WATCHDOG_16MS);      // shorten WD timeout
+  while (1)			      // and busy-loop so that WD causes
+    ;				      //  a reset and app start.
+}
+
+void verifySpace(void) {
+  if (getch() != CRC_EOP)
+    wait_timeout();
   putch(STK_INSYNC);
 }
 
