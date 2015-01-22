@@ -49,7 +49,7 @@ enabled the bootloader takes up 1.5 kB instead of the original 0.5 kB.
 
 The nRF chip is expected to be connected to the arduino using the 3 standard SPI pins (MOSI,
 MISO, SCK) plus the CE and CSN pins of the nRF chip.  By default optiboot assumes CE is
-wired to Analog Pin 1 (PC1) and CSN to Analog Pin 0 (PC0) because they're next to the SPI pins
+wired to Analog Pin 1 (PC1) and CSN to SPI Slave Select (SS) aka. Digital pin 10 (PB2) because they're right next to the SPI pins
 on some Arduinos.  You can change that mapping in optiboot.c.
 
 FORCE_WATCHDOG=1 enables the watchdog when starting the user application -- it will reset your programs after

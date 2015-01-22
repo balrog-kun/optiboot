@@ -787,10 +787,10 @@ static uint8_t pkt_max_len = 32;
 
 #define CE_DDR		DDRC
 #define CE_PORT		PORTC
-#define CSN_DDR		DDRC
-#define CSN_PORT	PORTC
+#define CSN_DDR		DDRB
+#define CSN_PORT	PORTB
 #define CE_PIN		(1 << 1)
-#define CSN_PIN		(1 << 0)
+#define CSN_PIN		(1 << 2)
 
 #include "spi.h"
 #include "nrf24.h"
