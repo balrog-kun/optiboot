@@ -529,6 +529,13 @@ int main(void) {
   // Set up Timer 1 for timeout counter
   TCCR1B = _BV(CS12) | _BV(CS10); // div 1024
 #endif
+  /*
+   * Disable pullups that may have been enabled by a user program.
+   * Somehow a pullup on RXD screws up everything unless RXD is externally
+   * driven high.
+   */
+  DDRD |= 3;
+  PORTD &= ~3;
 #ifndef SOFT_UART
 #if defined(__AVR_ATmega8__) || defined (__AVR_ATmega32__)
   UCSRA = _BV(U2X); //Double speed mode USART
